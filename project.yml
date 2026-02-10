@@ -28,5 +28,6 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: LadderBar/LadderBar.entitlements
         CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: true
         ENABLE_APP_SANDBOX: true
         com.apple.security.network.client: true
