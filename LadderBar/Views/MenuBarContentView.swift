@@ -6,12 +6,15 @@ struct MenuBarContentView: View {
     @State private var clubListVM: ClubListViewModel?
     @State private var dataManager: DataManager?
     @State private var navigationPath = NavigationPath()
+    @State private var showingSettings = false
 
     var body: some View {
         Group {
             if let clubListVM, let dataManager {
-                if clubListVM.clubs.isEmpty {
-                    EmptyStateView()
+                if showingSettings {
+                    inlineSettingsView(clubListVM: clubListVM)
+                } else if clubListVM.clubs.isEmpty {
+                    EmptyStateView(onOpenSettings: { showingSettings = true })
                 } else {
                     NavigationStack(path: $navigationPath) {
                         clubListView(clubListVM: clubListVM, dataManager: dataManager)
@@ -29,7 +32,7 @@ struct MenuBarContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 650, height: 500)
         .task {
             let dm = DataManager(modelContext: modelContext)
             dataManager = dm
@@ -40,47 +43,129 @@ struct MenuBarContentView: View {
         }
     }
 
-    private func clubListView(clubListVM: ClubListViewModel, dataManager: DataManager) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("LadderBar")
-                        .font(.headline)
-                    Spacer()
-                    if dataManager.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
+    private func inlineSettingsView(clubListVM: ClubListViewModel) -> some View {
+        VStack(spacing: 0) {
+            // Header bar
+            HStack(spacing: 8) {
+                Button {
+                    showingSettings = false
+                    Task { await clubListVM.loadAll() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.caption.weight(.semibold))
+                        Text("Back")
+                            .font(.subheadline)
                     }
-                    Button {
-                        Task { await clubListVM.loadAll() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    SettingsLink {
-                        Image(systemName: "gear")
-                    }
-                    .buttonStyle(.borderless)
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
-
-                if let error = dataManager.error {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
+                .buttonStyle(.borderless)
+                Spacer()
+                Text("Settings")
+                    .font(.headline)
+                Spacer()
+                // Invisible spacer to balance the back button
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption.weight(.semibold))
+                    Text("Back")
+                        .font(.subheadline)
                 }
-
-                ForEach(clubListVM.clubs) { club in
-                    ClubSectionView(
-                        club: club,
-                        dataManager: dataManager,
-                        navigationPath: $navigationPath
-                    )
-                }
+                .hidden()
             }
-            .padding(.bottom, 8)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+
+            Divider()
+
+            SettingsView()
+        }
+    }
+
+    private func clubListView(clubListVM: ClubListViewModel, dataManager: DataManager) -> some View {
+        VStack(spacing: 0) {
+            // Header bar
+            HStack(spacing: 8) {
+                Image(systemName: "figure.cricket")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("LadderBar")
+                    .font(.headline)
+                Spacer()
+                if dataManager.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button {
+                    Task { await clubListVM.loadAll() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.body)
+                }
+                .buttonStyle(.borderless)
+                .help("Refresh")
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gear")
+                        .font(.body)
+                }
+                .buttonStyle(.borderless)
+                .help("Settings")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+
+            Divider()
+
+            // Content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let error = dataManager.error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                    }
+
+                    ForEach(clubListVM.clubs) { club in
+                        ClubSectionView(
+                            club: club,
+                            dataManager: dataManager,
+                            navigationPath: $navigationPath
+                        )
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+
+            Divider()
+
+            // Footer bar
+            HStack {
+                if let lastUpdated = dataManager.lastUpdated {
+                    Text("Updated \(lastUpdated, format: .relative(presentation: .named))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text("Loading…")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    Text("Quit")
+                        .font(.caption2)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial)
         }
     }
 }

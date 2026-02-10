@@ -5,10 +5,11 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ClubModel.dateAdded) private var clubs: [ClubModel]
 
-    @State private var orgIdInput = ""
-    @State private var pendingOrg: OrganisationResponse?
-    @State private var isLookingUp = false
-    @State private var lookupError: String?
+    @State private var searchText = ""
+    @State private var searchResults: [ClubSearchItem] = []
+    @State private var isSearching = false
+    @State private var searchError: String?
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -20,7 +21,7 @@ struct SettingsView: View {
             savedClubsList
         }
         .padding(20)
-        .frame(width: 450, height: 400)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -30,48 +31,75 @@ struct SettingsView: View {
                 .font(.headline)
 
             HStack {
-                TextField("Organisation ID", text: $orgIdInput)
+                TextField("Search for a club…", text: $searchText)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: searchText) { _, newValue in
+                        scheduleSearch(newValue)
+                    }
 
-                Button("Look Up") {
-                    Task { await lookUpOrg() }
+                if isSearching {
+                    ProgressView()
+                        .controlSize(.small)
                 }
-                .disabled(orgIdInput.trimmingCharacters(in: .whitespaces).isEmpty || isLookingUp)
             }
 
-            if isLookingUp {
-                ProgressView("Looking up organisation...")
-                    .controlSize(.small)
-            }
-
-            if let error = lookupError {
+            if let error = searchError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
             }
 
-            if let org = pendingOrg {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(org.name)
-                            .font(.subheadline.weight(.semibold))
-                        if let shortName = org.shortName {
-                            Text(shortName)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+            if !searchResults.isEmpty {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(searchResults) { item in
+                            let alreadyAdded = clubs.contains { $0.organisationGuid == item.organisationGuid }
+                            HStack(spacing: 10) {
+                                clubLogo(url: item.logoURL, size: 24)
+
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(item.name)
+                                        .font(.subheadline)
+                                        .lineLimit(1)
+                                    HStack(spacing: 4) {
+                                        if let shortName = item.shortName, !shortName.isEmpty {
+                                            Text(shortName)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        if let state = item.stateName {
+                                            Text(state)
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                }
+
+                                Spacer()
+
+                                if alreadyAdded {
+                                    Text("Added")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Button("Add") {
+                                        addClub(item)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+
+                            if item.id != searchResults.last?.id {
+                                Divider().padding(.leading, 42)
+                            }
                         }
                     }
-                    Spacer()
-                    Button("Add Club") {
-                        addClub(org)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button("Cancel") {
-                        pendingOrg = nil
-                    }
                 }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(.background))
+                .frame(maxHeight: 160)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
             }
         }
@@ -84,20 +112,23 @@ struct SettingsView: View {
                 .font(.headline)
 
             if clubs.isEmpty {
-                Text("No clubs added yet. Enter an organisation ID above to get started.")
+                Text("No clubs added yet. Search for a club above to get started.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 List {
                     ForEach(clubs) { club in
-                        HStack {
+                        HStack(spacing: 10) {
+                            clubLogo(url: club.logoURL, size: 20)
+
                             VStack(alignment: .leading) {
                                 Text(club.name)
                                     .font(.subheadline)
-                                Text(club.organisationGuid)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
+                                if !club.shortName.isEmpty {
+                                    Text(club.shortName)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                             Spacer()
                             Button(role: .destructive) {
@@ -114,41 +145,71 @@ struct SettingsView: View {
         }
     }
 
-    private func lookUpOrg() async {
-        let trimmed = orgIdInput.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-
-        isLookingUp = true
-        lookupError = nil
-        pendingOrg = nil
-
-        do {
-            let org = try await CricketAPIService.shared.fetchOrganisation(orgId: trimmed)
-
-            // Check if already added
-            if clubs.contains(where: { $0.organisationGuid == org.organisationGuid }) {
-                lookupError = "\(org.name) is already added."
-            } else {
-                pendingOrg = org
+    @ViewBuilder
+    private func clubLogo(url: String?, size: CGFloat) -> some View {
+        if let urlString = url, let imageURL = URL(string: urlString) {
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                case .failure:
+                    Image(systemName: "shield")
+                        .font(.system(size: size * 0.5))
+                        .foregroundStyle(.tertiary)
+                default:
+                    Color.clear
+                }
             }
-        } catch {
-            lookupError = "Could not find organisation: \(error.localizedDescription)"
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        } else {
+            Image(systemName: "shield")
+                .font(.system(size: size * 0.5))
+                .foregroundStyle(.tertiary)
+                .frame(width: size, height: size)
         }
-
-        isLookingUp = false
     }
 
-    private func addClub(_ org: OrganisationResponse) {
+    private func scheduleSearch(_ term: String) {
+        searchTask?.cancel()
+        searchError = nil
+
+        let trimmed = term.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 2 else {
+            searchResults = []
+            return
+        }
+
+        searchTask = Task {
+            // Debounce: wait 300ms before firing
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+
+            isSearching = true
+            do {
+                let response = try await CricketAPIService.shared.searchClubs(term: trimmed)
+                guard !Task.isCancelled else { return }
+                searchResults = response.clubs?.items ?? []
+            } catch {
+                guard !Task.isCancelled else { return }
+                searchError = "Search failed: \(error.localizedDescription)"
+                searchResults = []
+            }
+            isSearching = false
+        }
+    }
+
+    private func addClub(_ item: ClubSearchItem) {
         let club = ClubModel(
-            organisationGuid: org.organisationGuid,
-            name: org.name,
-            shortName: org.shortName ?? "",
-            logoURL: org.logoURL
+            organisationGuid: item.organisationGuid,
+            name: item.name,
+            shortName: item.shortName ?? "",
+            logoURL: item.logoURL
         )
         modelContext.insert(club)
         try? modelContext.save()
-        pendingOrg = nil
-        orgIdInput = ""
     }
 
     private func deleteClub(_ club: ClubModel) {

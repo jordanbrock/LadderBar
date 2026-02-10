@@ -4,6 +4,7 @@ actor CricketAPIService {
     static let shared = CricketAPIService()
 
     private let baseURL = "https://grassrootsapiproxy.cricket.com.au"
+    private let searchBaseURL = "https://api.playcommunity.pulselive.com"
     private let session: URLSession
     private let decoder: JSONDecoder
 
@@ -26,6 +27,12 @@ actor CricketAPIService {
 
     func fetchTeams(orgId: String, seasonId: String) async throws -> TeamsResponse {
         let url = "\(baseURL)/fixturesladders/organisations/\(orgId)/teams?seasonId=\(seasonId)&jsconfig=eccn:true"
+        return try await fetch(url: url)
+    }
+
+    func searchClubs(term: String) async throws -> ClubSearchResponse {
+        let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? term
+        let url = "\(searchBaseURL)/ca-search/v1/playCommunity?types=PLAYCOMM_CLUB&term=\(encoded)&size=20&page=0&sorting=ASC&tags=search"
         return try await fetch(url: url)
     }
 

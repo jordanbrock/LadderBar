@@ -84,11 +84,22 @@ enum LadderValue: Codable, Sendable {
     }
 
     var displayString: String {
+        displayString(forColumn: nil)
+    }
+
+    private static let oneDecimalColumns: Set<String> = [
+        "oversFaced", "oversBowled"
+    ]
+
+    func displayString(forColumn columnId: String?) -> String {
         switch self {
         case .int(let v): return "\(v)"
         case .double(let v):
             if v == v.rounded() && abs(v) < 1_000_000 {
                 return "\(Int(v))"
+            }
+            if let columnId, Self.oneDecimalColumns.contains(columnId) {
+                return String(format: "%.1f", v)
             }
             return String(format: "%.3f", v)
         case .string(let v): return v

@@ -12,6 +12,7 @@ final class DataManager {
     var ladderCache: [String: LaddersResponse] = [:]  // gradeId -> ladders
     var isLoading = false
     var error: String?
+    var lastUpdated: Date?
 
     private var refreshTimer: Timer?
     private let refreshInterval: TimeInterval = 300  // 5 minutes
@@ -51,6 +52,7 @@ final class DataManager {
             }
         }
         isLoading = false
+        lastUpdated = Date()
     }
 
     func loadTeamsForClub(orgId: String) async {
@@ -129,6 +131,7 @@ final class DataManager {
         for gradeId in gradeIds {
             await loadLadder(gradeId: gradeId)
         }
+        lastUpdated = Date()
     }
 
     private func cacheLadder(gradeId: String, gradeName: String, response: LaddersResponse) {

@@ -13,6 +13,21 @@ struct LadderView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Grade header
+            VStack(spacing: 2) {
+                Text(viewModel.gradeName)
+                    .font(.subheadline.weight(.semibold))
+                if let orgName = viewModel.laddersResponse?.grade.organisation?.name {
+                    Text(orgName)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .bottom) { Divider() }
+
             if viewModel.availableLadders.count > 1 {
                 Picker("Format", selection: $viewModel.selectedLadderName) {
                     ForEach(viewModel.availableLadders) { ladder in
@@ -20,25 +35,49 @@ struct LadderView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
 
-            if viewModel.isLoading && viewModel.selectedLadder == nil {
-                Spacer()
-                ProgressView("Loading ladder...")
-                Spacer()
-            } else if let ladder = viewModel.selectedLadder {
-                LadderTableView(
-                    ladder: ladder,
-                    clubTeamIds: viewModel.clubTeamIds,
-                    clubOrgIds: viewModel.clubOrgIds
-                )
-            } else {
-                Spacer()
-                Text("No ladder data available")
-                    .foregroundStyle(.secondary)
-                Spacer()
+            ZStack(alignment: .top) {
+                if let ladder = viewModel.selectedLadder {
+                    LadderTableView(
+                        ladder: ladder,
+                        clubTeamIds: viewModel.clubTeamIds,
+                        clubOrgIds: viewModel.clubOrgIds
+                    )
+                } else if !viewModel.isLoading {
+                    Spacer()
+                    Text("No ladder data available")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    Spacer()
+                }
+
+                // Inline loading indicator
+                if viewModel.isLoading {
+                    if viewModel.selectedLadder == nil {
+                        VStack {
+                            Spacer()
+                            ProgressView("Loading ladder…")
+                                .font(.caption)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Refreshing…")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 4)
+                    }
+                }
             }
         }
         .navigationTitle(viewModel.gradeName)

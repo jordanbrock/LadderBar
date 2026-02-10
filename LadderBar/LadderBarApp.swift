@@ -24,6 +24,7 @@ struct LadderBarApp: App {
 
         Settings {
             SettingsView()
+                .frame(width: 450, height: 400)
                 .modelContainer(modelContainer)
         }
     }
